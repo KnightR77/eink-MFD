@@ -8,8 +8,8 @@ import time
 import math
 
 # Define font settings
-FONT_PATH = "UbuntuNerdFontPropo_Regular.ttf"  # Replace with actual TTF file path
-FONT_SIZE = 64 # Adjust as needed
+FONT_PATH = "UbuntuNerdFontPropo_Light.ttf"  # Replace with actual TTF file path
+FONT_SIZE = 18 # Adjust as needed
 FONT_NAME = FONT_PATH.split('.')[0] + str(FONT_SIZE) + "pt"
 OUTPUT_FILE =  FONT_NAME + ".h"
 
@@ -124,7 +124,7 @@ def generate_font_header():
         f.write(f"const GFXglyph {FONT_NAME}Glyphs[]" + " PROGMEM = {\n")
         for i, (char, (width, height)) in enumerate(char_map.items()):
             if char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":
-                yOff = int(-max_alnum_height*0.8)
+                yOff = int(-max_alnum_height*0.85)
             elif char in "gpqy":
                 yOff = int(-o_height)
             elif char in "j":

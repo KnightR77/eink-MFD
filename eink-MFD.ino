@@ -13,6 +13,7 @@
 // #include "UbuntuSansMonoNerdFont_Regular48pt.h"
 #include "UbuntuNerdFontPropo_Regular24pt.h"
 #include "UbuntuNerdFontPropo_Light24pt.h"
+#include "UbuntuNerdFontPropo_Light18pt.h"
 #include "UbuntuNerdFontPropo_Regular32pt.h"
 #include "UbuntuNerdFontPropo_Regular64pt.h"
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
@@ -21,6 +22,13 @@
 #include <HTTPClient.h>
 #include "config.h" //edit from config.template.h
 
+const char* serverIP1 = "192.168.1.159";
+const int serverPort1 = 5000;
+// float VRAMU1 = 0;
+// float VRAM1 = 0;
+// int VLOAD1 = 0;
+// int VTMEP1 = 0;
+bool VGOOD1 = 0;
 
 String jsonbuffer = "";
 
@@ -83,7 +91,7 @@ bool isDST(struct tm* timeinfo) {
     return previousSunday < 1;
 }
 
-void drawTimeDate(String timeStr, String dateStr, String weekStr, String temp) {
+void drawTimeDate(String timeStr, String dateStr, String weekStr, String temp, String vram1, String vtemp1, String vload1, String vmodel1, bool vgood1) {
     display.setRotation(1);
     display.setTextColor(GxEPD_BLACK);
     display.fillScreen(GxEPD_WHITE);
@@ -93,6 +101,21 @@ void drawTimeDate(String timeStr, String dateStr, String weekStr, String temp) {
     display.setCursor(230, 20);
     display.print(temp);
     // display.print("-15.0'C");
+    display.setFont(&UbuntuNerdFontPropo_Light18pt);
+    if (vgood1){
+      display.setCursor(190, 40);
+      display.print(vmodel1);
+      display.setCursor(210, 56);
+      display.print(vram1);
+      display.setCursor(210, 72);
+      display.print(vtemp1);
+      display.setCursor(260, 72);
+      display.print(vload1);
+
+    } else{
+      display.setCursor(185, 90);
+      display.print("Error");
+    }
 
     display.setFont(&UbuntuNerdFontPropo_Regular24pt);
 
@@ -164,8 +187,53 @@ void loop() {
     char tempBuffer[10];
     snprintf(tempBuffer, sizeof(tempBuffer), "%.1f'C", tmptr);
     String formattedTemp = String(tempBuffer);
-    
-    drawTimeDate(formattedTime, dateStr, weekDay, formattedTemp);
+    String vram1 = "";
+    String vtemp1 = "";
+    String vload1 = "";
+    String vmodel1 = "";
+    VGOOD1 = 0;
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        String url = "http://" + String(serverIP1) + ":" + String(serverPort1) + "/gpu-stats";
+        http.begin(url);
+
+        int httpResponseCode = http.GET();
+        if (httpResponseCode == 200) {
+            String payload = http.getString();
+            Serial.println("Received GPU Data: " + payload);
+
+            // Parse JSON response
+            StaticJsonDocument<200> doc;
+            DeserializationError error = deserializeJson(doc, payload);
+            if (!error) {
+                Serial.println(doc["gpu_model"].as<String>());
+                Serial.print("GPU Temp: "); Serial.println(doc["temperature"].as<int>());
+                Serial.print("Memory Used: "); Serial.println(doc["memory_used"].as<int>());
+                Serial.print("Total Memory: "); Serial.println(doc["memory_total"].as<int>());
+                Serial.print("GPU Usage: "); Serial.println(doc["gpu_usage"].as<int>());
+
+                char vram1buf[20];
+                char vtemp1buf[10];
+                char vload1buf[10];
+                snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", doc["memory_used"].as<float>(), doc["memory_total"].as<float>());
+                snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", doc["temperature"].as<int>());
+                snprintf(vload1buf, sizeof(vload1buf), "%d%%", doc["gpu_usage"].as<int>());
+                vram1 = String(vram1buf);
+                vtemp1 = String(vtemp1buf);
+                vload1 = String(vload1buf);
+                vmodel1 = String(doc["gpu_model"].as<String>());
+                VGOOD1 = 1;
+            }
+        } else {
+            Serial.print("HTTP Request Failed, Code: ");
+            Serial.println(httpResponseCode);
+        }
+        http.end();
+    } else {
+        Serial.println("WiFi not connected!");
+    }
+
+    drawTimeDate(formattedTime, dateStr, weekDay, formattedTemp, vram1, vtemp1, vload1, vmodel1, VGOOD1);
     delay(60000);
 
     if (tmphour != ptm->tm_hour){
