@@ -20,14 +20,23 @@
 #include <GxIO/GxIO.h>
 #include <ctime>
 #include <HTTPClient.h>
-#include "config.h" //edit from config.template.h
+#include "config.h"  //edit from config.template.h
+#include <Timezone.h>
+
+#define TZ_OFFSET 0
+#define NTP_INTERVAL 60000
+
+TimeChangeRule usEDT = { "EDT", Second, Sun, Mar, 2, -240 };  // Eastern Daylight Time = UTC - 4 hours
+TimeChangeRule usEST = { "EST", First, Sun, Nov, 2, -300 };   // Eastern Standard Time = UTC - 5 hours
+Timezone usET(usEDT, usEST);
 
 const char* serverIP1 = "192.168.1.159";
 const int serverPort1 = 5000;
-// float VRAMU1 = 0;
-// float VRAM1 = 0;
-// int VLOAD1 = 0;
-// int VTMEP1 = 0;
+float vram1 = 0;
+float vramu1 = 0;
+int vtemp1 = 0;
+int vload1 = 0;
+String vmodel1 = "";
 bool VGOOD1 = 0;
 
 String jsonbuffer = "";
@@ -36,17 +45,20 @@ String weather = "Invalid";
 float tmptr = -99;
 
 int tmphour = 0;
+int tmpmin = 0;
+
+unsigned long lastupdate = 0;
 
 WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", -18000, 60000); // Eastern Time Zone UTC-5 (seconds)
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 0, 60000);  // Eastern Time Zone UTC-5 (seconds)
 
-GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/ 17, /*RST=*/ 16);
-GxEPD_Class display(io, /*RST=*/ 16, /*BUSY=*/ 4);
+GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16);
+GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);
 
-const char* weekDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-const char* months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+const char* weekDays[] = { "", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+const char* months[] = { "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
-void getCurrWeather(){
+void getCurrWeather() {
   StaticJsonDocument<200> weatherinfo;
   // DeserializationError error = deserializeJson(weatherinfo, jsonbuffer.c_str());
   String url = "http://api.openweathermap.org/data/2.5/weather?lat=" + latitude + "&lon=" + longitude + "&appid=" + apik;
@@ -55,189 +67,230 @@ void getCurrWeather(){
   http.begin(client, url.c_str());
   int httpresp = http.GET();
   String pld;
-  if (httpresp > 0){
+  if (httpresp > 0) {
     Serial.println("Got weather info!");
     pld = http.getString();
     jsonbuffer = pld.c_str();
-  }
-  else{
+  } else {
     Serial.println("Failed to get weather");
     jsonbuffer = "";
   }
   http.end();
-  if (jsonbuffer == ""){
+  if (jsonbuffer == "") {
     weather = "Invalid";
     tmptr = -99;
-  }
-  else {
-      deserializeJson(weatherinfo, jsonbuffer);
-      const char * tmpw = weatherinfo["weather"]["main"];
-      weather = tmpw;
-      tmptr = weatherinfo["main"]["temp"];
-      tmptr -= 273.15;
+  } else {
+    deserializeJson(weatherinfo, jsonbuffer);
+    const char* tmpw = weatherinfo["weather"]["main"];
+    weather = tmpw;
+    tmptr = weatherinfo["main"]["temp"];
+    tmptr -= 273.15;
   }
   Serial.println(weather);
   return;
 };
 
 bool isDST(struct tm* timeinfo) {
-    int month = timeinfo->tm_mon + 1;
-    int day = timeinfo->tm_mday;
-    int wday = timeinfo->tm_wday;
-    if (month < 3 || month > 11) return false;
-    if (month > 3 && month < 11) return true;
-    int previousSunday = day - wday;
-    if (month == 3) return previousSunday >= 8;
-    return previousSunday < 1;
+  int month = timeinfo->tm_mon + 1;
+  int day = timeinfo->tm_mday;
+  int wday = timeinfo->tm_wday;
+  if (month < 3 || month > 11) return false;
+  if (month > 3 && month < 11) return true;
+  int previousSunday = day - wday;
+  if (month == 3) return previousSunday >= 8;
+  return previousSunday < 1;
 }
 
-void drawTimeDate(String timeStr, String dateStr, String weekStr, String temp, String vram1, String vtemp1, String vload1, String vmodel1, bool vgood1) {
-    display.setRotation(1);
-    display.setTextColor(GxEPD_BLACK);
-    display.fillScreen(GxEPD_WHITE);
+void updateMonitor() {
+  VGOOD1 = 0;
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    String url = "http://" + String(serverIP1) + ":" + String(serverPort1) + "/gpu-stats";
+    http.begin(url);
 
-    display.setFont(&UbuntuNerdFontPropo_Light24pt);
+    int httpResponseCode = http.GET();
+    if (httpResponseCode == 200) {
+      String payload = http.getString();
+      Serial.println("Received GPU Data: " + payload);
 
-    display.setCursor(230, 20);
-    display.print(temp);
-    // display.print("-15.0'C");
-    display.setFont(&UbuntuNerdFontPropo_Light18pt);
-    if (vgood1){
-      display.setCursor(190, 40);
-      display.print(vmodel1);
-      display.setCursor(210, 56);
-      display.print(vram1);
-      display.setCursor(210, 72);
-      display.print(vtemp1);
-      display.setCursor(260, 72);
-      display.print(vload1);
-
-    } else{
-      display.setCursor(185, 90);
-      display.print("Error");
+      // Parse JSON response
+      StaticJsonDocument<200> doc;
+      DeserializationError error = deserializeJson(doc, payload);
+      if (!error) {
+        Serial.println(doc["gpu_model"].as<String>());
+        Serial.print("GPU Temp: ");
+        Serial.println(doc["temperature"].as<int>());
+        Serial.print("Memory Used: ");
+        Serial.println(doc["memory_used"].as<int>());
+        Serial.print("Total Memory: ");
+        Serial.println(doc["memory_total"].as<int>());
+        Serial.print("GPU Usage: ");
+        Serial.println(doc["gpu_usage"].as<int>());
+        vramu1 = doc["memory_used"].as<float>();
+        vram1 = doc["memory_total"].as<float>();
+        vtemp1 = doc["temperature"].as<int>();
+        vload1 = doc["gpu_usage"].as<int>();
+        vmodel1 = String(doc["gpu_model"].as<String>());
+        VGOOD1 = 1;
+      }
+    } else {
+      Serial.print("HTTP Request Failed, Code: ");
+      Serial.println(httpResponseCode);
     }
+    http.end();
+  } else {
+    Serial.println("WiFi not connected!");
+  }
+}
 
-    display.setFont(&UbuntuNerdFontPropo_Regular24pt);
+void draw() {
+  char dateBuffer[20];
+  snprintf(dateBuffer, sizeof(dateBuffer), "%s-%02d-%d", months[month()], day(), year());
+  String dateStr = String(dateBuffer);
 
-    display.setCursor(5, 25);
-    display.print(weekStr);
-    // display.print("Wednesday");
+  char timeBuffer[10];
+  snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", hour(), minute());
+  String timeStr = String(timeBuffer);
 
-    display.setFont(&UbuntuNerdFontPropo_Regular32pt);
-    
-    // display.setCursor(5, 128);
-    // display.print("Date:");
-    display.setCursor(5, 60);
-    display.print(dateStr);
-    // display.print("Sep-30-2025");
+  String weekStr = weekDays[weekday()];
 
-    display.setFont(&UbuntuNerdFontPropo_Regular64pt);
-    
-    // display.setCursor(5, 55);
-    // display.print("Time:");
-    display.setCursor(5, 120);
-    display.print(timeStr);
-    // display.print("23:59");
+  char tempBuffer[10];
+  snprintf(tempBuffer, sizeof(tempBuffer), "%.1f'C", tmptr);
+  String temp = String(tempBuffer);
 
-    display.drawLine(180, 10, 180, 120, GxEPD_BLACK);
-    display.drawLine(181, 10, 181, 120, GxEPD_BLACK);
-    // display.drawLine(187, 10, 187, 120, GxEPD_BLACK);
+  char vram1buf[20];
+  char vtemp1buf[10];
+  char vload1buf[10];
+  snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", vramu1, vram1);
+  snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", vtemp1);
+  snprintf(vload1buf, sizeof(vload1buf), "%d%%", vload1);
+  String vvram1 = String(vram1buf);
+  String vvtemp1 = String(vtemp1buf);
+  String vvload1 = String(vload1buf);
+  // String vvmodel1 = String(doc["gpu_model"].as<String>());
 
-    display.update();
-    display.powerDown();
+  display.setRotation(3);
+  display.setTextColor(GxEPD_BLACK);
+  display.fillScreen(GxEPD_WHITE);
+
+  display.setFont(&UbuntuNerdFontPropo_Light24pt);
+
+  display.setCursor(230, 20);
+  display.print(temp);
+  // display.print("-15.0'C");
+  display.setFont(&UbuntuNerdFontPropo_Light18pt);
+  if (VGOOD1) {
+    display.setCursor(190, 40);
+    display.print(vmodel1);
+    display.setCursor(210, 56);
+    display.print(vvram1);
+    display.setCursor(210, 72);
+    display.print(vvtemp1);
+    display.setCursor(260, 72);
+    display.print(vvload1);
+
+  } else {
+    display.setCursor(185, 90);
+    display.print("Error");
+  }
+
+  display.setFont(&UbuntuNerdFontPropo_Regular24pt);
+
+  display.setCursor(5, 25);
+  display.print(weekStr);
+  // display.print("Wednesday");
+
+  display.setFont(&UbuntuNerdFontPropo_Regular32pt);
+
+  // display.setCursor(5, 128);
+  // display.print("Date:");
+  display.setCursor(5, 60);
+  display.print(dateStr);
+  // display.print("Sep-30-2025");
+
+  display.setFont(&UbuntuNerdFontPropo_Regular64pt);
+
+  // display.setCursor(5, 55);
+  // display.print("Time:");
+  display.setCursor(5, 120);
+  display.print(timeStr);
+  // display.print("23:59");
+
+  display.drawLine(180, 10, 180, 120, GxEPD_BLACK);
+  display.drawLine(181, 10, 181, 120, GxEPD_BLACK);
+  // display.drawLine(187, 10, 187, 120, GxEPD_BLACK);
+
+  display.update();
+  display.powerDown();
+}
+void drawPartial() {
+  char vram1buf[20];
+  char vtemp1buf[10];
+  char vload1buf[10];
+  snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", vramu1, vram1);
+  snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", vtemp1);
+  snprintf(vload1buf, sizeof(vload1buf), "%d%%", vload1);
+  String vvram1 = String(vram1buf);
+  String vvtemp1 = String(vtemp1buf);
+  String vvload1 = String(vload1buf);
+  display.setFont(&UbuntuNerdFontPropo_Light18pt);
+  display.fillRect(190, 20, 100, 100, GxEPD_WHITE);
+  if (VGOOD1) {
+    display.setCursor(190, 40);
+    display.print(vmodel1);
+    display.setCursor(210, 56);
+    display.print(vvram1);
+    display.setCursor(210, 72);
+    display.print(vvtemp1);
+    display.setCursor(250, 72);
+    display.print(vvload1);
+
+  } else {
+    display.setCursor(185, 90);
+    display.print("Error");
+  }
+  display.updateWindow(190, 20, 100, 100, true);
+  Serial.println("Partial");
 }
 
 void setup() {
-    Serial.begin(115200);
-    Serial.println("Connecting to WiFi...");
-    
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.print(".");
-    }
-    Serial.println("Connected to WiFi");
-    
-    timeClient.begin();
-    
-    display.init(115200);
-    display.fillScreen(GxEPD_WHITE);
-    display.update();
-    getCurrWeather();
+  Serial.begin(115200);
+  Serial.println("Connecting to WiFi...");
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected to WiFi");
+
+  timeClient.begin();
+
+  display.init(115200);
+  display.fillScreen(GxEPD_WHITE);
+  display.update();
+  getCurrWeather();
+  timeClient.update();
+  setTime(usET.toLocal(timeClient.getEpochTime()));
 }
 
 void loop() {
+  updateMonitor();
 
+  if (tmphour != hour()) {
     timeClient.update();
-    time_t epochTime = timeClient.getEpochTime();
-    struct tm *ptm = gmtime(&epochTime);
-    epochTime += isDST(ptm) ? 3600 : 0; // Adjust for daylight saving time
-    ptm = gmtime(&epochTime);
+    setTime(usET.toLocal(timeClient.getEpochTime()));
+    getCurrWeather();
+    tmphour = hour();
+  }
 
-    char dateBuffer[20];
-    snprintf(dateBuffer, sizeof(dateBuffer), "%s-%02d-%d", months[ptm->tm_mon], ptm->tm_mday, ptm->tm_year + 1900);
-    String dateStr = String(dateBuffer);
-    
-    char timeBuffer[10];
-    snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", ptm->tm_hour, ptm->tm_min);
-    String formattedTime = String(timeBuffer);
-    
-    String weekDay = weekDays[ptm->tm_wday];
-  
-    char tempBuffer[10];
-    snprintf(tempBuffer, sizeof(tempBuffer), "%.1f'C", tmptr);
-    String formattedTemp = String(tempBuffer);
-    String vram1 = "";
-    String vtemp1 = "";
-    String vload1 = "";
-    String vmodel1 = "";
-    VGOOD1 = 0;
-    if (WiFi.status() == WL_CONNECTED) {
-        HTTPClient http;
-        String url = "http://" + String(serverIP1) + ":" + String(serverPort1) + "/gpu-stats";
-        http.begin(url);
+  if (tmpmin != minute()) {
 
-        int httpResponseCode = http.GET();
-        if (httpResponseCode == 200) {
-            String payload = http.getString();
-            Serial.println("Received GPU Data: " + payload);
+    draw();
+    tmpmin = minute();
+  } else {
+    drawPartial();
+  }
 
-            // Parse JSON response
-            StaticJsonDocument<200> doc;
-            DeserializationError error = deserializeJson(doc, payload);
-            if (!error) {
-                Serial.println(doc["gpu_model"].as<String>());
-                Serial.print("GPU Temp: "); Serial.println(doc["temperature"].as<int>());
-                Serial.print("Memory Used: "); Serial.println(doc["memory_used"].as<int>());
-                Serial.print("Total Memory: "); Serial.println(doc["memory_total"].as<int>());
-                Serial.print("GPU Usage: "); Serial.println(doc["gpu_usage"].as<int>());
-
-                char vram1buf[20];
-                char vtemp1buf[10];
-                char vload1buf[10];
-                snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", doc["memory_used"].as<float>(), doc["memory_total"].as<float>());
-                snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", doc["temperature"].as<int>());
-                snprintf(vload1buf, sizeof(vload1buf), "%d%%", doc["gpu_usage"].as<int>());
-                vram1 = String(vram1buf);
-                vtemp1 = String(vtemp1buf);
-                vload1 = String(vload1buf);
-                vmodel1 = String(doc["gpu_model"].as<String>());
-                VGOOD1 = 1;
-            }
-        } else {
-            Serial.print("HTTP Request Failed, Code: ");
-            Serial.println(httpResponseCode);
-        }
-        http.end();
-    } else {
-        Serial.println("WiFi not connected!");
-    }
-
-    drawTimeDate(formattedTime, dateStr, weekDay, formattedTemp, vram1, vtemp1, vload1, vmodel1, VGOOD1);
-    delay(60000);
-
-    if (tmphour != ptm->tm_hour){
-      getCurrWeather();
-      tmphour = ptm->tm_hour;
-    }
+  delay(1000);
 }
