@@ -30,7 +30,7 @@ TimeChangeRule usEDT = { "EDT", Second, Sun, Mar, 2, -240 };  // Eastern Dayligh
 TimeChangeRule usEST = { "EST", First, Sun, Nov, 2, -300 };   // Eastern Standard Time = UTC - 5 hours
 Timezone usET(usEDT, usEST);
 
-const char* serverIP1 = "192.168.1.159";
+const char* serverIP1 = "192.168.1.2";
 const int serverPort1 = 5000;
 float vram1 = 0;
 float vramu1 = 0;
@@ -38,6 +38,15 @@ int vtemp1 = 0;
 int vload1 = 0;
 String vmodel1 = "";
 bool VGOOD1 = 0;
+
+const char* serverIP2 = "192.168.1.3";
+const int serverPort2 = 5000;
+float vram2 = 0;
+float vramu2 = 0;
+int vtemp2 = 0;
+int vload2 = 0;
+String vmodel2 = "";
+bool VGOOD2 = 0;
 
 String jsonbuffer = "";
 
@@ -103,15 +112,17 @@ bool isDST(struct tm* timeinfo) {
 
 void updateMonitor() {
   VGOOD1 = 0;
+  VGOOD2 = 0;
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    String url = "http://" + String(serverIP1) + ":" + String(serverPort1) + "/gpu-stats";
-    http.begin(url);
+    String url1 = "http://" + String(serverIP1) + ":" + String(serverPort1) + "/gpu-stats";
+    Serial.println(url1);
+    http.begin(url1);
 
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == 200) {
+    int httpResponseCode1 = http.GET();
+    if (httpResponseCode1 == 200) {
       String payload = http.getString();
-      Serial.println("Received GPU Data: " + payload);
+      Serial.println("Received GPU1 Data: " + payload);
 
       // Parse JSON response
       StaticJsonDocument<200> doc;
@@ -134,10 +145,46 @@ void updateMonitor() {
         VGOOD1 = 1;
       }
     } else {
-      Serial.print("HTTP Request Failed, Code: ");
-      Serial.println(httpResponseCode);
+      Serial.print("HTTP Request1 Failed, Code: ");
+      Serial.println(httpResponseCode1);
     }
     http.end();
+    
+    String url2 = "http://" + String(serverIP2) + ":" + String(serverPort2) + "/gpu-stats";
+    Serial.println(url2);
+    http.begin(url2);
+
+    int httpResponseCode2 = http.GET();
+    if (httpResponseCode2 == 200) {
+      String payload2 = http.getString();
+      Serial.println("Received GPU2 Data: " + payload2);
+
+      // Parse JSON response
+      StaticJsonDocument<200> doc2;
+      DeserializationError error2 = deserializeJson(doc2, payload2);
+      if (!error2) {
+        Serial.println(doc2["gpu_model"].as<String>());
+        Serial.print("GPU Temp: ");
+        Serial.println(doc2["temperature"].as<int>());
+        Serial.print("Memory Used: ");
+        Serial.println(doc2["memory_used"].as<int>());
+        Serial.print("Total Memory: ");
+        Serial.println(doc2["memory_total"].as<int>());
+        Serial.print("GPU Usage: ");
+        Serial.println(doc2["gpu_usage"].as<int>());
+        vramu2 = doc2["memory_used"].as<float>();
+        vram2 = doc2["memory_total"].as<float>();
+        vtemp2 = doc2["temperature"].as<int>();
+        vload2 = doc2["gpu_usage"].as<int>();
+        vmodel2 = String(doc2["gpu_model"].as<String>());
+        VGOOD2 = 1;
+      }
+    } else {
+      Serial.print("HTTP Request2 Failed, Code: ");
+      Serial.println(httpResponseCode2);
+    }
+    http.end();
+
   } else {
     Serial.println("WiFi not connected!");
   }
@@ -167,6 +214,16 @@ void draw() {
   String vvram1 = String(vram1buf);
   String vvtemp1 = String(vtemp1buf);
   String vvload1 = String(vload1buf);
+
+  char vram2buf[20];
+  char vtemp2buf[10];
+  char vload2buf[10];
+  snprintf(vram2buf, sizeof(vram2buf), "%.1f/%.1fGB", vramu2, vram2);
+  snprintf(vtemp2buf, sizeof(vtemp2buf), "%d'C", vtemp2);
+  snprintf(vload2buf, sizeof(vload2buf), "%d%%", vload2);
+  String vvram2 = String(vram2buf);
+  String vvtemp2 = String(vtemp2buf);
+  String vvload2 = String(vload2buf);
   // String vvmodel1 = String(doc["gpu_model"].as<String>());
 
   display.setRotation(3);
@@ -180,17 +237,31 @@ void draw() {
   // display.print("-15.0'C");
   display.setFont(&UbuntuNerdFontPropo_Light18pt);
   if (VGOOD1) {
-    display.setCursor(190, 40);
+    display.setCursor(190, 45);
     display.print(vmodel1);
-    display.setCursor(210, 56);
+    display.setCursor(210, 61);
     display.print(vvram1);
-    display.setCursor(210, 72);
+    display.setCursor(210, 77);
     display.print(vvtemp1);
-    display.setCursor(260, 72);
+    display.setCursor(255, 77);
     display.print(vvload1);
 
   } else {
-    display.setCursor(185, 90);
+    display.setCursor(190, 40);
+    display.print("Error");
+  }
+  if (VGOOD2) {
+    display.setCursor(190, 95);
+    display.print(vmodel2);
+    display.setCursor(210, 111);
+    display.print(vvram2);
+    display.setCursor(210, 127);
+    display.print(vvtemp2);
+    display.setCursor(255, 127);
+    display.print(vvload2);
+
+  } else {
+    display.setCursor(190, 100);
     display.print("Error");
   }
 
@@ -233,24 +304,56 @@ void drawPartial() {
   String vvram1 = String(vram1buf);
   String vvtemp1 = String(vtemp1buf);
   String vvload1 = String(vload1buf);
+  char vram2buf[20];
+  char vtemp2buf[10];
+  char vload2buf[10];
+  snprintf(vram2buf, sizeof(vram2buf), "%.1f/%.1fGB", vramu2, vram2);
+  snprintf(vtemp2buf, sizeof(vtemp2buf), "%d'C", vtemp2);
+  snprintf(vload2buf, sizeof(vload2buf), "%d%%", vload2);
+  String vvram2 = String(vram2buf);
+  String vvtemp2 = String(vtemp2buf);
+  String vvload2 = String(vload2buf);
   display.setFont(&UbuntuNerdFontPropo_Light18pt);
-  display.fillRect(190, 20, 100, 100, GxEPD_WHITE);
+  display.fillRect(190, 20, 100, 108, GxEPD_WHITE);
   if (VGOOD1) {
-    display.setCursor(190, 40);
+    display.setCursor(190, 45);
     display.print(vmodel1);
-    display.setCursor(210, 56);
+    display.setCursor(210, 61);
     display.print(vvram1);
-    display.setCursor(210, 72);
+    display.setCursor(210, 77);
     display.print(vvtemp1);
-    display.setCursor(250, 72);
+    display.setCursor(255, 77);
     display.print(vvload1);
-
   } else {
-    display.setCursor(185, 90);
+    display.setCursor(190, 50);
     display.print("Error");
   }
-  display.updateWindow(190, 20, 100, 100, true);
+    if (VGOOD2) {
+    display.setCursor(190, 95);
+    display.print(vmodel2);
+    display.setCursor(210, 111);
+    display.print(vvram2);
+    display.setCursor(210, 127);
+    display.print(vvtemp2);
+    display.setCursor(255, 127);
+    display.print(vvload2);
+
+  } else {
+    display.setCursor(190, 100);
+    display.print("Error");
+  }
+  display.updateWindow(190, 20, 100, 108, true);
   Serial.println("Partial");
+}
+void drawPartialTime(){
+  char timeBuffer[10];
+  snprintf(timeBuffer, sizeof(timeBuffer), "%02d:%02d", hour(), minute());
+  String timeStr = String(timeBuffer);
+  display.setFont(&UbuntuNerdFontPropo_Regular64pt);
+  display.fillRect(5, 65, 150, 60, GxEPD_WHITE);
+  display.setCursor(5, 120);
+  display.print(timeStr);
+  display.updateWindow(5, 65, 150, 60, true);
 }
 
 void setup() {
@@ -281,16 +384,16 @@ void loop() {
     timeClient.update();
     setTime(usET.toLocal(timeClient.getEpochTime()));
     getCurrWeather();
+    draw();
     tmphour = hour();
   }
 
   if (tmpmin != minute()) {
 
-    draw();
+    drawPartialTime();
     tmpmin = minute();
-  } else {
-    drawPartial();
   }
+  drawPartial();
 
   delay(1000);
 }
