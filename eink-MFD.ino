@@ -205,26 +205,26 @@ void draw() {
   snprintf(tempBuffer, sizeof(tempBuffer), "%.1f'C", tmptr);
   String temp = String(tempBuffer);
 
-  char vram1buf[20];
-  char vtemp1buf[10];
-  char vload1buf[10];
-  snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", vramu1, vram1);
-  snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", vtemp1);
-  snprintf(vload1buf, sizeof(vload1buf), "%d%%", vload1);
-  String vvram1 = String(vram1buf);
-  String vvtemp1 = String(vtemp1buf);
-  String vvload1 = String(vload1buf);
+  // char vram1buf[20];
+  // char vtemp1buf[10];
+  // char vload1buf[10];
+  // snprintf(vram1buf, sizeof(vram1buf), "%.1f/%.1fGB", vramu1, vram1);
+  // snprintf(vtemp1buf, sizeof(vtemp1buf), "%d'C", vtemp1);
+  // snprintf(vload1buf, sizeof(vload1buf), "%d%%", vload1);
+  // String vvram1 = String(vram1buf);
+  // String vvtemp1 = String(vtemp1buf);
+  // String vvload1 = String(vload1buf);
 
-  char vram2buf[20];
-  char vtemp2buf[10];
-  char vload2buf[10];
-  snprintf(vram2buf, sizeof(vram2buf), "%.1f/%.1fGB", vramu2, vram2);
-  snprintf(vtemp2buf, sizeof(vtemp2buf), "%d'C", vtemp2);
-  snprintf(vload2buf, sizeof(vload2buf), "%d%%", vload2);
-  String vvram2 = String(vram2buf);
-  String vvtemp2 = String(vtemp2buf);
-  String vvload2 = String(vload2buf);
-  // String vvmodel1 = String(doc["gpu_model"].as<String>());
+  // char vram2buf[20];
+  // char vtemp2buf[10];
+  // char vload2buf[10];
+  // snprintf(vram2buf, sizeof(vram2buf), "%.1f/%.1fGB", vramu2, vram2);
+  // snprintf(vtemp2buf, sizeof(vtemp2buf), "%d'C", vtemp2);
+  // snprintf(vload2buf, sizeof(vload2buf), "%d%%", vload2);
+  // String vvram2 = String(vram2buf);
+  // String vvtemp2 = String(vtemp2buf);
+  // String vvload2 = String(vload2buf);
+  // // String vvmodel1 = String(doc["gpu_model"].as<String>());
 
   display.setRotation(3);
   display.setTextColor(GxEPD_BLACK);
@@ -235,35 +235,35 @@ void draw() {
   display.setCursor(230, 20);
   display.print(temp);
   // display.print("-15.0'C");
-  display.setFont(&UbuntuNerdFontPropo_Light18pt);
-  if (VGOOD1) {
-    display.setCursor(190, 45);
-    display.print(vmodel1);
-    display.setCursor(210, 61);
-    display.print(vvram1);
-    display.setCursor(210, 77);
-    display.print(vvtemp1);
-    display.setCursor(255, 77);
-    display.print(vvload1);
+  // display.setFont(&UbuntuNerdFontPropo_Light18pt);
+  // if (VGOOD1) {
+  //   display.setCursor(190, 45);
+  //   display.print(vmodel1);
+  //   display.setCursor(210, 61);
+  //   display.print(vvram1);
+  //   display.setCursor(210, 77);
+  //   display.print(vvtemp1);
+  //   display.setCursor(255, 77);
+  //   display.print(vvload1);
 
-  } else {
-    display.setCursor(190, 40);
-    display.print("Error");
-  }
-  if (VGOOD2) {
-    display.setCursor(190, 95);
-    display.print(vmodel2);
-    display.setCursor(210, 111);
-    display.print(vvram2);
-    display.setCursor(210, 127);
-    display.print(vvtemp2);
-    display.setCursor(255, 127);
-    display.print(vvload2);
+  // } else {
+  //   display.setCursor(190, 40);
+  //   display.print("Error");
+  // }
+  // if (VGOOD2) {
+  //   display.setCursor(190, 95);
+  //   display.print(vmodel2);
+  //   display.setCursor(210, 111);
+  //   display.print(vvram2);
+  //   display.setCursor(210, 127);
+  //   display.print(vvtemp2);
+  //   display.setCursor(255, 127);
+  //   display.print(vvload2);
 
-  } else {
-    display.setCursor(190, 100);
-    display.print("Error");
-  }
+  // } else {
+  //   display.setCursor(190, 100);
+  //   display.print("Error");
+  // }
 
   display.setFont(&UbuntuNerdFontPropo_Regular24pt);
 
@@ -318,11 +318,11 @@ void drawPartial() {
   if (VGOOD1) {
     display.setCursor(190, 45);
     display.print(vmodel1);
-    display.setCursor(210, 61);
+    display.setCursor(205, 61);
     display.print(vvram1);
-    display.setCursor(210, 77);
+    display.setCursor(205, 77);
     display.print(vvtemp1);
-    display.setCursor(255, 77);
+    display.setCursor(250, 77);
     display.print(vvload1);
   } else {
     display.setCursor(190, 50);
@@ -331,11 +331,11 @@ void drawPartial() {
     if (VGOOD2) {
     display.setCursor(190, 95);
     display.print(vmodel2);
-    display.setCursor(210, 111);
+    display.setCursor(205, 111);
     display.print(vvram2);
-    display.setCursor(210, 127);
+    display.setCursor(205, 127);
     display.print(vvtemp2);
-    display.setCursor(255, 127);
+    display.setCursor(250, 127);
     display.print(vvload2);
 
   } else {
