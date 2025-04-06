@@ -22,6 +22,7 @@
 #include <HTTPClient.h>
 #include "config.h"  //edit from config.template.h
 #include <Timezone.h>
+#include "image.h"  // for logo image
 
 #define TZ_OFFSET 0
 #define NTP_INTERVAL 60000
@@ -232,8 +233,10 @@ void draw() {
 
   display.setFont(&UbuntuNerdFontPropo_Light24pt);
 
-  display.setCursor(230, 20);
+  display.setCursor(230, 25);
   display.print(temp);
+  // display.setCursor(185, 20);  
+  display.drawBitmap(image, 190, 0, 30, 30, GxEPD_BLACK); // Draw the logo image, 48x48 pixels, adjust as needed
   // display.print("-15.0'C");
   // display.setFont(&UbuntuNerdFontPropo_Light18pt);
   // if (VGOOD1) {
@@ -314,7 +317,7 @@ void drawPartial() {
   String vvtemp2 = String(vtemp2buf);
   String vvload2 = String(vload2buf);
   display.setFont(&UbuntuNerdFontPropo_Light18pt);
-  display.fillRect(190, 20, 100, 108, GxEPD_WHITE);
+  display.fillRect(190, 40, 100, 108, GxEPD_WHITE);
   if (VGOOD1) {
     display.setCursor(190, 45);
     display.print(vmodel1);
@@ -371,6 +374,8 @@ void setup() {
 
   display.init(115200);
   display.fillScreen(GxEPD_WHITE);
+  display.update();
+  display.fillScreen(GxEPD_BLACK);
   display.update();
   getCurrWeather();
   timeClient.update();
